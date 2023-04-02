@@ -1,0 +1,9 @@
+djangorestframework==3.14.0
+django-debug-toolbar==3.8.1
+psycopg2==2.9.5
+django-redis==5.2.0
+drf-spectacular==0.24.2
+# Generating mock data
+factory-boy==3.2.1
+Faker==15.3.2
+redis==4.5.4

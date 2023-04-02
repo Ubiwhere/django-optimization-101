@@ -1,0 +1,54 @@
+version: '3.7'
+
+services:
+
+  # Database service
+  db:
+    image: postgis/postgis:15-3.3-alpine
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./dbbackup:/backup
+    restart: always
+    environment:
+      - POSTGRES_DB=db
+      - POSTGRES_USER=postgres
+      - POSTGRES_HOST_AUTH_METHOD=trust
+
+  # Redis for caching
+  redis:
+    image: redis:7.0.5-alpine
+    restart: always
+    volumes:
+      - "redis:/data"
+
+  # Django API
+  api:
+    restart: always
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    # Expose port 8000 for local development
+    ports:
+      - "8000:8000"
+    # Add code volume to reflect codes changes inside container
+    volumes:
+      - ./:/code/
+    environment:
+      # Config for redis connection
+      # Redis
+      - REDIS_HOST=redis # name of docker compose service
+      - REDIS_PORT=6379 # redis default port
+      # Config for postgres database connection
+      - POSTGRES_DB=db # ---------|
+      - POSTGRES_USER=postgres #--|--> Same as defined in db service
+      - POSTGRES_HOST=db # name of docker compose service
+      - POSTGRES_PORT=5432 # default postgres port
+    # Add command to run local server
+    command: python manage.py runserver 0.0.0.0:8000
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  dbdata:
+  redis:
