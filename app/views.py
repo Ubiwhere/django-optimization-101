@@ -18,7 +18,7 @@ from django.db.models import Prefetch
 from .factories import fake
 
 
-class Ex1Viewset(viewsets.GenericViewSet, mixins.ListModelMixin):
+class Ex1Viewset(viewsets.GenericViewSet):
     """Example view to demonstrate the differences between using
     low-level database operations vs python high-level ones."""
 
