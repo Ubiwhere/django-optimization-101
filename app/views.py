@@ -34,7 +34,13 @@ class Ex1Viewset(viewsets.GenericViewSet):
     def filter_at_python(self, request, *args, **kwargs):
         """This API endpoint filters the books on which the
         title starts with the letter A."""
-        return Response()
+        filtered_books = []
+        for book in Book.objects.all():
+            if book.title.startswith("A"):
+                filtered_books.append(book)
+
+        serializer = BookSerializer(filtered_books, many=True)
+        return Response(serializer.data)
 
     @time_response
     @action(
@@ -45,7 +51,9 @@ class Ex1Viewset(viewsets.GenericViewSet):
     def filter_at_database(self, request, *args, **kwargs):
         """This API endpoint filters the queryset using database
         queries."""
-        return Response()
+        filtered_books = Book.objects.filter(Q(title__startswith="A"))
+        serializer = BookSerializer(filtered_books, many=True)
+        return Response(serializer.data)
 
     @time_response
     @action(
@@ -55,6 +63,10 @@ class Ex1Viewset(viewsets.GenericViewSet):
     )
     def non_optimized_create(self, request, *args, **kwargs):
         """This API endpoint creates 10k books for the first author."""
+        author = Author.objects.first()
+        for _ in range(10000):
+            Book.objects.create(title=fake.text(), isbn=fake.isbn10(), author=author)
+
         return Response()
 
     @time_response
@@ -66,6 +78,13 @@ class Ex1Viewset(viewsets.GenericViewSet):
     def optimized_create(self, request, *args, **kwargs):
         """This API endpoint creates 10k books for the first author, using
         an optimized operation"""
+        author = Author.objects.first()
+        books = []
+        for _ in range(10000):
+            books.append(Book(title=fake.text(), isbn=fake.isbn10(), author=author))
+
+        Book.objects.bulk_create(books)
+
         return Response()
 
 
@@ -95,8 +114,9 @@ class Ex2Viewset(viewsets.GenericViewSet):
     def without_optimization(self, request, *args, **kwargs):
         """This API fetches the authors and their books without any
         optimization."""
-
-        return Response()
+        queryset = Author.objects.all()
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data)
 
     @time_response
     @action(
@@ -107,7 +127,9 @@ class Ex2Viewset(viewsets.GenericViewSet):
     def with_optimization(self, request, *args, **kwargs):
         """This API fetches the authors and their books with
         optimization."""
-        return Response()
+        queryset = Author.objects.prefetch_related("book_set")
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data)
 
 
 class Ex3Viewset(viewsets.GenericViewSet):
@@ -120,7 +142,7 @@ class Ex3Viewset(viewsets.GenericViewSet):
         """Serializer class for `Book` object that includes a nested
         representation of the associated `Author`."""
 
-        author = AuthorSerializer()
+        author = AuthorWithCountrySerializer()
 
         class Meta:
             model = Book
@@ -136,7 +158,9 @@ class Ex3Viewset(viewsets.GenericViewSet):
     )
     def without_optimization(self, request, *args, **kwargs):
         """This API fetches the books without any optimization."""
-        return Response()
+        queryset = Book.objects.all()[:10000]
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data)
 
     @time_response
     @action(
@@ -147,18 +171,31 @@ class Ex3Viewset(viewsets.GenericViewSet):
     def with_optimization(self, request, *args, **kwargs):
         """This API fetches the books with a pre-fetch of the authors
         foreign keys."""
-
-        return Response()
+        queryset = Book.objects.select_related("author__country")[:10000]
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data)
 
 
 class Ex4Viewset(viewsets.GenericViewSet, mixins.ListModelMixin):
     """Example view to demonstrate a more advanced pre-fetch optimization usage."""
 
-    queryset = Author.objects.all()
+    queryset = Author.objects.prefetch_related(
+        Prefetch(
+            "book_set",
+            queryset=Book.objects.order_by("-date_published"),
+            to_attr="cached_books",
+        )
+    )
 
     class Ex4Serializer(serializers.ModelSerializer):
         """Serializer class for `Author` that includes a nested JSON representation
         of a random book they have written."""
+
+        last_book = serializers.SerializerMethodField()
+
+        def get_last_book(self, obj: Author):
+            if obj.cached_books:
+                return BookSerializer(obj.cached_books[0]).data
 
         class Meta:
             model = Author
@@ -187,5 +224,6 @@ class Ex5Viewset(viewsets.GenericViewSet, mixins.ListModelMixin):
     serializer_class = Ex5Serializer
 
     @time_response
+    @method_decorator(cache_page(15 * 60, key_prefix="books"))
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
